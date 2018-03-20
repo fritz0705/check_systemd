@@ -1,0 +1,83 @@
+#!/bin/sh
+
+usage() {
+	cat <<EOF
+Usage: check_systemd [-h|--help] [--usage] [-v]
+EOF
+}
+
+exitcode=0
+verbosity=0
+
+SYSTEMCTL="systemctl --no-pager"
+
+while getopts "hv-:" o
+do
+	case $o in
+		h)
+			usage
+			exit
+			;;
+		-)
+			case $OPTARG in
+				help|usage)
+					usage
+					exit
+					;;
+			esac
+			;;
+		v)
+			verbosity=$(($verbosity + 1))
+			;;
+	esac
+done
+
+system_state="$($SYSTEMCTL is-system-running)"
+
+case $system_state in
+	initializing|starting|running)
+		statuscode=0
+		;;
+	degraded|offline)
+		statuscode=2
+		;;
+	stopping|maintenance)
+		statuscode=1
+		;;
+	*)
+		statuscode=3
+		;;
+esac
+
+failedunits() {
+	$SYSTEMCTL list-units --failed --plain --no-legend | while read n
+do 
+	echo "$n" | cut -d' ' -f1
+done | tr -s '[:space:]' ' ' | sed 's/ ./,\0/g'
+}
+
+case $statuscode in
+	0)
+		echo "SYSTEMD OK: $system_state"
+		;;
+	1)
+		echo "SYSTEMD WARNING: $system_state"
+		;;
+	2)
+		if test $verbosity -ge 1
+		then
+			echo "SYSTEMD CRITICAL: $system_state - Failed units: $(failedunits)"
+		else
+			echo "SYSTEMD CRITICAL: $system_state"
+		fi
+		;;
+	3)
+		echo "SYSTEMD UNKNOWN: $system_state"
+esac
+
+if test $verbosity -ge 2
+then
+	echo
+	$SYSTEMCTL status
+fi
+
