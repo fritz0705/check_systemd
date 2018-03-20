@@ -1,0 +1,120 @@
+#!/bin/sh
+
+usage() {
+	cat <<EOF
+Usage: check_eapol_test [-h|--help] [--usage] [-v] [-c CONFIG] [-H HOSTNAME]
+       [-p PORT] [-s SECRET] [-f|--fail]
+EOF
+}
+
+verbosity=0
+configfile=
+radius_host=
+radius_secret=
+radius_port=
+should_fail=false
+EAPOL_TEST=${EAPOL_TEST:-eapol_test}
+
+while getopts "hfv-:c:H:s:p:" o
+do
+	case $o in
+		h)
+			usage
+			exit
+			;;
+		-)
+			case $OPTARG in
+				help|usage)
+					usage
+					exit
+					;;
+				config)
+					shift $(($OPTIND - 1)) #lol
+					configfile=$1
+					;;
+				host)
+					shift $(($OPTIND - 1)) #lol
+					radius_server=$1
+					;;
+				port)
+					shift $(($OPTIND - 1)) #lol
+					radius_port=$1
+					;;
+				secret)
+					shift $(($OPTIND - 1)) #lol
+					radius_secret=$1
+					;;
+				fail)
+					should_fail=true
+					;;
+			esac
+			;;
+		v)
+			verbosity=$(($verbosity + 1))
+			;;
+		c)
+			configfile="-c $OPTARG"
+			;;
+		p)
+			radius_port="-p $OPTARG"
+			;;
+		s)
+			radius_secret="-s $OPTARG"
+			;;
+		H)
+			radius_host="-a $OPTARG"
+			;;
+		f)
+			should_fail=true
+			;;
+	esac
+done
+
+outfile=$(mktemp)
+
+# Run eapol_test
+eapol_test $configfile $radius_host $radius_secret $radius_port > $outfile
+retval=$?
+result=$(tail -1 $outfile)
+
+output_filter() {
+	case $verbosity in
+		1)
+			grep -E "^CTRL-EVENT"
+			;;
+		2)
+			grep -E "^(CTRL-EVENT|EAP[A-Z-]+|SSL|WPA|ENGINE):"
+			;;
+		3)
+			cat
+			;;
+	esac
+}
+
+exitcode=0
+
+if $should_fail
+then if test "$result" = "FAILURE"
+then
+	echo "EAPOL OK: $result"
+else
+	echo "EAPOL CRITICAL: $result"
+	exitcode=2
+fi else
+if test "$result" = "SUCCESS"
+then
+	echo "EAPOL OK: $result"
+else
+	echo "EAPOL CRITICAL: $result"
+	exitcode=2
+fi fi
+
+if test $verbosity -gt 0
+then
+	echo
+	cat $outfile | output_filter
+fi
+
+rm $outfile
+exit $exitcode
+
