@@ -11,7 +11,7 @@ verbosity=0
 
 SYSTEMCTL="systemctl --no-pager"
 
-while getopts "hv-:" o
+while getopts "hv-:"
 do
 	case $o in
 		h)
@@ -80,4 +80,6 @@ then
 	echo
 	$SYSTEMCTL status
 fi
+
+exit $exitcode
 
